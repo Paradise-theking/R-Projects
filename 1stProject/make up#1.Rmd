@@ -1,0 +1,402 @@
+---
+title: "make up#1"
+author: "paradise nxumalo 2020 801 63"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r}
+rm(list = ls())
+library(LearnEDAfunctions)
+library(tidyverse)
+library(reshape2)
+library(aplpack)
+library(vcd)
+library(ggplot2)
+library(twoway)
+library(car)
+```
+
+
+```{r}
+salaries.data <- read.csv("C:/Users/user/Desktop/sgele/YEAR III/Data Warehousing and Mining/PROJECTS/Salaries.csv")
+salaries.data <- na.omit(salaries.data)
+head(salaries.data)
+```
+
+```{r}
+for (rank in unique(salaries.data$rank)) {
+  print(paste0("rank: ",rank))
+  print(stem.leaf(salaries.data[salaries.data$rank == rank, ]$salary))
+} 
+```
+>> A stem and leaf plot of the raw data grouped by the rank shows us a huge right skew on the rank of 'Prof'. The rank of AsstProf and AssocProf both show a somewhat symmetrical display thought not perfectly.
+
+```{r}
+for (rank in unique(salaries.data$rank)) {
+  print(paste0("rank: ",rank))
+  print(fivenum(salaries.data[salaries.data$rank == rank, ]$salary))
+} 
+```
+
+>> The five numbers of all the rank show an ascending order. The rank of prof starts at 57 800 and the last is 231 545. AsstProf has the first value being 63 100 and the last being 97 032. AssocProf starts at 62 884  and ends at 126 431. The patterns of all the five numbers suggests that our dataset is skewed to the right.
+
+```{r}
+ggplot(salaries.data, aes(x =  salary,fill =  rank))+
+  geom_histogram()+facet_wrap(~rank)
+
+```
+
+
+>>Looking at the histogram further confirms that our ranks are right skewed with the strongest skew seen on the rank if Prof
+
+```{r}
+new.salaries.data <- salaries.data[, c(2,4,5,7)]
+
+new.salaries.data %>%
+  group_by(rank) %>%
+  summarise_all(sum) %>%
+  data.frame() -> salaries.dataz
+
+head(salaries.dataz)
+
+(salariess <- data.frame(salaries.dataz[,-1], row.names = salaries.dataz[,1]))
+
+# Median polish
+(additive.fit <- medpolish(log(salariess)))
+
+plot(twoway(salariess))
+grid(col = "#bbbbbb", lwd = 1.4)
+
+##############
+# Additive fit plot
+Row.Part <- with(additive.fit, row + overall)
+Col.Part <- additive.fit$col
+plot2way(Row.Part, Col.Part,
+         dimnames(salariess)[[1]], dimnames(salariess)[[2]])
+```
+
+>> Fit is not the most attractive but this is hugely influenced by the huge gap in count between salary and the other two variables. As such, Assistant Professors that from both yrs.since.phd and yrs.service have a small FIT of about 4 to 6.This tells us that their salary is lower too. Professors are the ones that appear to get a high salary as they have the highest FIT
+
+```{r}
+spread_level_plot(salaries.data,salary,rank)
+
+(p <- 1-0.87)
+```
+
+>> The spread level plot returns 0.87 and subtracting that value from 1 give us 0.13 which suggests a log transformation as the most approproate to reexpress our dataset.
+
+```{r}
+framed.datas <- data.frame(rank = salaries.data$rank,
+                           salary =salaries.data$salary)
+#################################
+ggplot(framed.datas, aes(rank,salary))+
+  geom_boxplot()+
+  labs(title = 'raw',y = "Salary" ,x = "Rank" )+
+  theme(axis.text.x = element_text(angle = 40,hjust = 1))
+```
+
+>>The boxplots have visibly uneven spreads making it impossible to compare.
+
+```{r}
+midds <- lval(framed.datas$salary)
+midds$mids
+```
+
+
+```{r}
+lval_plus(framed.datas,salary,rank) %>%
+  group_by(rank) %>%
+  summarise(rank = unique(rank),
+            Fence_LO = median(Fence_LO),
+            Fence_HI = median (Fence_HI),
+            Count_Outs = sum(OUT == TRUE),
+            .groups = 'drop')
+
+```
+>>The AssocProf and Asst ranks both have no outliers. Prof has 3 of them.
+
+```{r}
+lval_plus(salaries.data,salary,rank)[-c(2:3)]%>%
+  group_by(rank)%>%
+  filter(OUT == TRUE)%>%
+  arrange(salary, .by_group = T)%>%
+  select(c('rank','discipline','yrs.since.phd','yrs.service','sex','salary'))
+```
+>> The three outliers from the Prof rank Prof A Male with a salary of 204 000. The 2nd if Prof A Male earning a salary of 205 500 and lastly if Prof B Male earning 231 545 in salary.
+
+```{r}
+framed.data <- data.frame(rank = salaries.data$rank,
+                           salary =log(salaries.data$salary))
+
+ggplot(framed.data, aes(rank,salary))+
+  geom_boxplot()+
+  labs(title = 'raw',y = "Salary" ,x = "Rank" )+
+  theme(axis.text.x = element_text(angle = 40,hjust = 1))
+```
+
+>> The log transformation does not apprear to have done an excellent job in reexpressing our value. However, there is an improvement with our reexpresed data. Prof how only shows one outlier rather than the two that appeared in the previous boxplot.The AsstProf spread is now more visible and is more symmetrical.AssocProf now appears to have a more visible left skew yet its spread has been improved as well. This may not be the best tranformation but it has still fairly done its job in tranforming our data.
+
+```{r}
+sort(salaries.data$salary)[1:10]
+max(salaries.data$salary)
+min(salaries.data$salary)
+
+h.bin <- hist(salaries.data$salary, plot = T)
+bins <- h.bin$breaks
+
+(bin.mids <- (bins[-1] + bins[-length(bins)]) / 2)
+(h <- with(salaries.data,hist(salary, breaks = bins, xlab = "Salary", main = "Histogram")))
+
+
+data.frame(Mid=h$mids, Count=h$counts, Roots=sqrt(h$counts))
+
+h$counts <- sqrt(h$counts)
+plot(h, xlab = "TIME", ylab = "ROOT FREQUENCY", main = "standardized histogram")
+
+(fl.u <- fivenum(salaries.data$salary)[c(2,4)])
+
+g.mean <- sum(fl.u)/2
+g.sd <- diff(fl.u)/1.349
+
+median <- median(salaries.data$salary)
+df <- IQR(salaries.data$salary)
+
+s <- fit.gaussian(salaries.data$salary, bins, median, df)
+s <- fit.gaussian(salaries.data$salary, bins, g.mean, g.sd)
+
+options(digits=4)
+(data <- data.frame(Mid=bin.mids, d=s$counts, sqrt.d=sqrt(s$counts),
+                    Prob=s$probs, e=s$expected, sqrt.e=sqrt(s$expected),
+                    Residual=s$residual))
+
+plot(h, xlab = "TIME", ylab = "ROOT FREQUENCY", main = "")
+
+lines(bin.mids, sqrt(s$expected))
+
+
+rootogram(s$counts, s$expected)
+rootogram(s$counts, s$expected, type = 'deviation')
+
+
+data$drr <- with(data, sqrt(2 + 4*d) - sqrt(1 + 4*e))
+
+with(data, rootogram(sqrt(2 + 4*d), sqrt(1 + 4*e)))
+with(data, rootogram(sqrt(2 + 4*d), sqrt(1 + 4*e), type = 'deviation'))
+```
+
+>> The rootogram  on the salary is not the best fit thought its not looking too bad.This because the overall skew of the salary is right skewed  hence a rootogram cannot fit the perfectly normal curve.Its worth tranforming though to see if  it can be improved.
+
+```{r}
+salaries.data<- data.frame(rank = salaries.data$rank,discipline = salaries.data$discipline,
+                           yrs.since.phd= salaries.data$yrs.since.phd,yrs.service = salaries.data$yrs.service,
+                           sex = salaries.data$sex, salary = salaries.data$salary, log.salary = log(salaries.data$salary))
+
+sort(salaries.data$log.salary)[1:10]
+max(salaries.data$log.salary)
+min(salaries.data$log.salary)
+
+h.bin <- hist(salaries.data$log.salary, plot = T)
+bins <- h.bin$breaks
+
+(bin.mids <- (bins[-1] + bins[-length(bins)]) / 2)
+(h <- hist(salaries.data$log.salary, breaks = bins, xlab = "Salary", main = "Histogram"))
+
+
+data.frame(Mid=h$mids, Count=h$counts, Roots=sqrt(h$counts))
+
+h$counts <- sqrt(h$counts)
+plot(h, xlab = "TIME", ylab = "ROOT FREQUENCY", main = "standardized histogram")
+
+# Gaussian Resistant measures
+(fl.u <- fivenum(salaries.data$log.salary)[c(2,4)])
+
+g.mean <- sum(fl.u)/2
+g.sd <- diff(fl.u)/1.349
+
+# Standard Resistant measures
+median <- median(salaries.data$log.salary)
+df <- IQR(salaries.data$log.salary)
+
+s <- fit.gaussian(salaries.data$log.salary, bins, median, df)
+s <- fit.gaussian(salaries.data$log.salary, bins, g.mean, g.sd)
+
+options(digits=3)
+(data <- data.frame(Mid=bin.mids, d=s$counts, sqrt.d=sqrt(s$counts),
+                    Prob=s$probs, e=s$expected, sqrt.e=sqrt(s$expected),
+                    Residual=s$residual))
+
+plot(h, xlab = "Salary", ylab = "ROOT FREQUENCY", main = "")
+
+
+rootogram(s$counts, s$expected)
+rootogram(s$counts, s$expected, type = 'deviation')
+
+
+data$drr <- with(data, sqrt(2 + 4*d) - sqrt(1 + 4*e))
+
+# Alternative especially when bins have small counts
+with(data, rootogram(sqrt(2 + 4*d), sqrt(1 + 4*e)))
+with(data, rootogram(sqrt(2 + 4*d), sqrt(1 + 4*e), type = 'deviation'))
+```
+>>Here we have succesfully tranformed a set to be more symmetrical such that the nornal curves fits better.  We also do not have significant over and underfits.
+
+```{r}
+lo.68 <- g.mean-g.sd
+hi.68 <- g.mean + g.sd
+(lo.68.percent <- exp(c(lo.68, hi.68)))
+
+lo.95 <- g.mean-(2*g.sd)
+hi.95 <- g.mean + (2*g.sd)
+(lo.95.percent <- exp(c(lo.95, hi.95)))
+```
+
+>>The middle 68% range corresponds to 82 860 and 147 367. The middle 95% range is 62 132 and 196 530.
+
+```{r}
+symplot(salaries.data$salary)
+plot(salaries.data$salary,salaries.data$yrs.service)
+```
+
+
+```{r}
+head(salaries.data)
+plot(salaries.data$salary,salaries.data$yrs.service)
+symplot(salaries.data$salary)
+
+new.framed <- data.frame(sqrt.yrs.service = sqrt(salaries.data$yrs.service),
+                         sqrt.salary = sqrt(salaries.data$salary))
+plot(new.framed$sqrt.salary,new.framed$sqrt.yrs.service)
+(sorted.datas <- new.framed[order(new.framed$sqrt.yrs.service, decreasing = T),])
+
+sorted.datas$group <- as.numeric(cut_number(sorted.datas$sqrt.yrs.service, 3)) #dividing data into three groups
+length(sorted.datas$sqrt.salary)
+# Counts per group
+(n1 <- nrow(sorted.datas[which(sorted.datas$group == 1),]))# which means where
+(n2 <- nrow(sorted.datas[which(sorted.datas$group == 2),]))
+(n3 <- nrow(sorted.datas[which(sorted.datas$group == 3),]))
+
+# Find divisions between groups
+t1 <- first(sorted.datas[which(sorted.datas$group == 1),
+                              'sqrt.yrs.service'])
+
+t2 <- first(sorted.datas[which(sorted.datas$group == 2),
+                              'sqrt.yrs.service'])
+
+# find (median x, median y) and put to one data frame
+# summary.points <- data.frame(x=c(1.79, 1.87, 2.03),
+#                        y=c(2.08, 2.14, 2.31))
+(summary.points <- as.data.frame(
+  rbind(
+    sapply(sorted.datas[which(sorted.datas$group == 1),
+                       1:2], 2, FUN = median),
+    sapply(sorted.datas[which(sorted.datas$group == 2),
+                       1:2], 2, FUN = median),
+    sapply(sorted.datas[which(sorted.datas$group == 3),
+                       1:2], 2, FUN = median) #2 means column
+  )
+)
+)
+
+(slr.full <- lm(sqrt.salary ~ sqrt.yrs.service,
+                data = new.framed))
+(slr.resistant <- lm(sqrt.salary ~ sqrt.yrs.service,  summary.points))
+#is rlm model from original data, will it be similar to resistant line
+#r.resistant <-rlm(log.2000~log.1985, data = home.prices))
+
+
+
+
+# View plot with 3rds and summary points
+with(sorted.datas, plot(sqrt.yrs.service, sqrt.salary,
+                       main="3 Groups, Summary Points\n and Lines of Best Fit"))
+abline(v=t1)
+abline(v=t2)
+points(summary.points, cex=2, pch=19, col="red")
+
+abline(slr.full, col = "blue")
+abline(slr.resistant, col = "red")
+legend("topleft", legend = c("SLR Full", "SLR Resistant"), 
+       col = c("blue", "red"), lwd=2)
+
+```
+>> Since our data in not normally distributed, we reexpress our x and y variable. In this case we are looking and the number of years in service versus the salary. We then draw a resistant line line based on our transformed graph and the three summary points plotted based on the mean position for the three devision. 
+
+
+
+```{r}
+# Fitting a risistant line to data with rline
+(myfit <- rline(sqrt.salary~sqrt.yrs.service, new.framed))
+FIT <- with(myfit, a + b * (new.framed$sqrt.salary - xC))
+RESIDUAL <- myfit$residual
+options(digits=4) # round everything to 4 digits
+salaries.data <- data.frame(rank = salaries.data$rank, 
+           discipline = salaries.data$discipline, 
+           yrs.since.phd =  salaries.data$yrs.since.phd,
+          yrs.service = salaries.data$yrs.service,
+          sex = salaries.data$sex,
+          salary = salaries.data$salary,
+          sqrt.yrs.service = new.framed$sqrt.yrs.service,
+          sqrt.salary = new.framed$sqrt.salary,
+           FIT, RESIDUAL)
+
+head(salaries.data)
+# Residual Analysis
+plot(salaries.data$sqrt.yrs.service, RESIDUAL,
+     main = 'Resistant SLR Residual vs yrs.service')
+abline(h=0, col = "red", lwd=2)
+
+# Finding convergence with iterations from 5 to 10
+Results <- data.frame(Iteration=NULL, Slope=NULL, Intercept=NULL)
+for(iterations in 1:10){
+  fit <- rline(sqrt.yrs.service ~ sqrt.salary, salaries.data, iter=iterations)
+  Results <- rbind(Results,
+                   data.frame(Iteration=iterations,
+                              Slope=fit$b, Intercept=fit$a))
+}
+Results
+
+# Median x value
+(xc <- summary.points[[2,1]])
+
+# Build linear model
+lm(sqrt.yrs.service ~ I(sqrt.salary - xc), data = salaries.data)
+
+# Create an outlier to see difference
+(salaries.data$yrs.service.a <- salaries.data$sqrt.yrs.service)
+(salaries.data$yrs.service.a[331])
+(salaries.data$yrs.service.a[331] <- 10) ##?????
+
+r <- rline(yrs.service.a ~ sqrt.salary, salaries.data, 10)
+r[c("a", "b", "xC")]
+
+(slr.a <- lm(salaries.data$yrs.service.a ~ I(sqrt.salary - r$xC), salaries.data))
+(slr.a <- lm(yrs.service.a ~ sqrt.salary, salaries.data))
+
+with(salaries.data, plot(sqrt.salary, salaries.data$yrs.service.a))
+abline(a = r$a + r$b * -r$xC,
+       b = r$b, col = "red")
+abline(slr.a, col = "blue")
+legend("topleft", legend = c("SLR Full", "SLR Resistant"), 
+       col = c("blue", "red"), lwd=2)
+
+# Resistant v Full Residual Analysis
+plot(salaries.data$sqrt.salary, r$residual,
+     main = 'Resistant SLR Residual vs sqrt.salary')
+abline(h=0, col = "red", lwd=2)
+plot(salaries.data$sqrt.salary, slr.a$residual,
+     main = 'Full SLR Residual vs sqrt.salary')
+abline(h=0, col = "blue", lwd=2)
+
+```
+>> Looking at these above graphs we can see how the resistant lines maintains its positiom even after after changing row 331 to the value 10.Regardless The graph tries its best yo represent all the positions but some are just distant such as those with a residual of 6.

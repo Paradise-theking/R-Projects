@@ -1,0 +1,421 @@
+---
+title: 'make up #2'
+author: "paradise nxumalo 2020 801 63"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+rm(list = ls())
+library(LearnEDAfunctions)
+library(tidyverse)
+library(reshape2)
+library(aplpack)
+library(vcd)
+library(ggplot2)
+library(twoway)
+library(car)
+BEPS <- read.csv("C:/Users/user/Desktop/sgele/YEAR III/Data Warehousing and Mining/PROJECTS/BEPS.csv")
+head(BEPS)
+```
+
+
+```{r}
+
+for (vote in unique(BEPS$vote)) {
+  print(paste0("vote: ",vote))
+  print(fivenum(BEPS[BEPS$vote == vote, ]$age))
+} 
+```
+ >>The five numbers display of our dataset shows an ascending order for all three political partties. Liberal Democrat starts at 24 to 89 votes while Labour also starts at 24 through to 91 and then Consecutive is from 24 to 93. This tells us that our data has a skew.
+ 
+```{r}
+for (vote in unique(BEPS$vote)) {
+  print(paste0("vote: ",vote))
+  print(stem.leaf(BEPS[BEPS$vote == vote, ]$age))
+}
+```
+
+>> The above stem and leaf plot show us how right skewed Liberal Democrat and Labor are with only the Consecutive party having a left skew.
+
+```{r}
+for (vote in unique(BEPS$vote)) {
+  print(paste0("vote: ",vote))
+  print(hinkley(BEPS[BEPS$vote == vote, ]$age))
+}
+```
+
+>>The hinkley values further support the right skewness of the data.Liberal returns 0.88 and Labour returns 0.07 which are both positive values supporting a right skew. Only Consecutive is having -0.04 which suggests a left skew.
+
+```{r}
+ggplot(BEPS, aes(x =  age,fill =  vote))+
+  geom_histogram()+facet_wrap(~vote)
+
+```
+
+
+>>Looking at the above histogram, we can see the right skewness of Labor and Liberal Democrat and then the left skewness of the Consecutive. This is information tells us that we need to tranform our data to see if the displys can be more symmetrical.
+
+```{r}
+new.beps <- BEPS[, c(2,4,5,6,7,8,9,10)]
+
+new.beps %>%
+  group_by(vote) %>%
+  summarise_all(sum) %>%
+  data.frame() -> beps.changed
+
+head(beps.changed)
+
+(beps.new <- data.frame(beps.changed[,-1], row.names = beps.changed[,1]))
+
+# Median polish
+(additive.fit <- medpolish(log(beps.new)))
+
+plot(twoway(beps.new))
+grid(col = "#bbbbbb", lwd = 1.4)
+
+##############
+# Additive fit plot
+Row.Part <- with(additive.fit, row + overall)
+Col.Part <- additive.fit$col
+plot2way(Row.Part, Col.Part,
+         dimnames(beps.new)[[1]], dimnames(beps.new)[[2]])
+
+```
+>>From our additive fit, we are able to learn that the Labour party has the highest number of voters in Europe because it has the highest FIT. Both the Consecuteive and Liberal Democrat seem to be lingering around the FIT 7 to 7.5 telling us that they both haver less voters than the Labour party in Europe.
+
+
+```{r}
+df <- data.frame(vote = BEPS$vote,age = BEPS$age,economic.cond.national= BEPS$economic.cond.national,
+                 economic.cond.household= BEPS$economic.cond.household,political.knowledge=BEPS$political.knowledge)
+#################################
+ggplot(df, aes(vote,age))+
+  geom_boxplot()+
+  labs(title = 'raw',y = "age" ,x = "vote" )+
+  theme(axis.text.x = element_text(angle = 40,hjust = 1))
+
+
+```
+
+>> The boxplots appear to have  somewhat similar spread and have no outliers. Liberal Democrat had a crear right skew. The labour party also has a right skew even though it is not that obvious. The Consecutive party also has an observable left skew even though it is also not that obvious. We will try and tranform the data to see uf we can improve out spreads.
+
+```{r}
+symplot(BEPS$age)
+
+midz <- lval(df$age)
+midz$mids
+```
+
+
+```{r}
+lval_plus(df,age,vote) %>%
+  group_by(vote) %>%
+  summarise(vote = unique(vote),
+            Fence_LO = median(Fence_LO),
+            Fence_HI = median (Fence_HI),
+            Count_Outs = sum(OUT == TRUE),
+            .groups = 'drop')
+
+
+```
+
+>> Our dataset has no outliers.
+
+
+```{r}
+lval_plus(BEPS,age,vote)[-c(2:3)]%>%
+  group_by(vote)%>%
+  filter(OUT == TRUE)%>%
+  arrange(age, .by_group = T)%>%
+  select(c('X','vote','age','economic.cond.national','economic.cond.household',
+           'Blair','Hague','Kennedy','Europe','political.knowledge','gender'))
+
+```
+
+>> 0 outliers.
+
+```{r}
+
+spread_level_plot(BEPS,age,vote)
+(p <- 1-0.81)
+```
+
+>> The Spread vs Level plot return 0.81 and subracting that from 1 we get 0.13. This means that we should try a log tranformation as a power to reexpress our values.
+
+```{r}
+reexpressed.df = data.frame(vote = BEPS$vote,age = BEPS$age, log.age = log(BEPS$age))
+
+ggplot(reexpressed.df, aes(vote,log.age))+
+  geom_boxplot()+
+  labs(title = 'reexpressed',y = "log.age" ,x = "vote" )+
+  theme(axis.text.x = element_text(angle = 40,hjust = 1))
+
+
+```
+
+>>Looking a the tranformed boxplots, we can see an improvement in the evenness of the spreads. Consecutive and Labout now have a relatively similar spread with the labour being lighly wider thanConsecutive. The median of Labour also appears to be in the middle meaning that set is now more symmeetrical. 
+
+
+```{r}
+sort(BEPS$age)[1:10]
+max(BEPS$age)
+min(BEPS$age)
+
+h.bin <- hist(BEPS$age, plot = F)
+bins <- h.bin$breaks
+# (bins <- seq(1000, 80000, 1000))
+(bin.mids <- (bins[-1] + bins[-length(bins)]) / 2)
+(h <- with(BEPS,hist(age, breaks = bins, xlab = "age", main = "Histogram")))
+
+
+
+data.frame(Mid=h$mids, Count=h$counts, Roots=sqrt(h$counts))###????
+
+h$counts <- sqrt(h$counts)
+plot(h, xlab = "age", ylab = "ROOT FREQUENCY", main = "standardized histogram")
+
+# Gaussian Resistant measures
+(fl.u <- fivenum(BEPS$age)[c(2,4)])
+
+g.mean <- sum(fl.u)/2
+g.sd <- diff(fl.u)/1.349
+
+# Standard Resistant measures
+median <- median(BEPS$age)
+df <- IQR(BEPS$age)
+
+s <- fit.gaussian(BEPS$age, bins, median, df)
+s <- fit.gaussian(BEPS$age, bins, g.mean, g.sd)
+
+options(digits=4)
+(data <- data.frame(Mid=bin.mids, d=s$counts, sqrt.d=sqrt(s$counts),
+                    Prob=s$probs, e=s$expected, sqrt.e=sqrt(s$expected),
+                    Residual=s$residual))
+
+plot(h, xlab = "age", ylab = "ROOT FREQUENCY", main = "")
+
+lines(bin.mids, sqrt(s$expected))
+
+
+
+
+rootogram(s$counts, s$expected)
+rootogram(s$counts, s$expected, type = 'deviation')
+
+
+data$drr <- with(data, sqrt(2 + 4*d) - sqrt(1 + 4*e))
+
+# Alternative especially when bins have small counts
+with(data, rootogram(sqrt(2 + 4*d), sqrt(1 + 4*e)))
+with(data, rootogram(sqrt(2 + 4*d), sqrt(1 + 4*e), type = 'deviation'))
+
+
+```
+
+>>The rootogram  on age is a fairly good fit even though its not perfect.This because the overall skew of the salary is right skewed  hence a rootogram cannot fit the perfectly normal curve.We will therefore transform the data to see if  it can be improved. We also have a few slightly significant overs and under estimation
+
+
+```{r}
+BEPS$log.age <- log(BEPS$age)
+BEPS$log.europe <- log(BEPS$Europe)
+head(BEPS)
+
+sort(BEPS$log.age)[1:10]
+max(BEPS$log.age)
+min(BEPS$log.age)
+
+h.bin <- hist(BEPS$log.age, plot = F)
+bins <- h.bin$breaks
+# (bins <- seq(1000, 80000, 1000))
+(bin.mids <- (bins[-1] + bins[-length(bins)]) / 2)
+(h <- with(BEPS,hist(log.age, breaks = bins, xlab = "age", main = "Histogram")))
+
+
+
+data.frame(Mid=h$mids, Count=h$counts, Roots=sqrt(h$counts))###????
+
+h$counts <- sqrt(h$counts)
+plot(h, xlab = "log.age", ylab = "ROOT FREQUENCY", main = "standardized histogram")
+
+# Gaussian Resistant measures
+(fl.u <- fivenum(BEPS$log.age)[c(2,4)])
+
+g.mean <- sum(fl.u)/2
+g.sd <- diff(fl.u)/1.349
+
+# Standard Resistant measures
+median <- median(BEPS$log.age)
+df <- IQR(BEPS$log.age)
+
+s <- fit.gaussian(BEPS$log.age, bins, median, df)
+s <- fit.gaussian(BEPS$log.age, bins, g.mean, g.sd)
+
+options(digits=4)
+(data <- data.frame(Mid=bin.mids, d=s$counts, sqrt.d=sqrt(s$counts),
+                    Prob=s$probs, e=s$expected, sqrt.e=sqrt(s$expected),
+                    Residual=s$residual))
+
+plot(h, xlab = "log.age", ylab = "ROOT FREQUENCY", main = "")
+
+lines(bin.mids, sqrt(s$expected))
+
+
+
+
+rootogram(s$counts, s$expected)
+rootogram(s$counts, s$expected, type = 'deviation')
+
+
+data$drr <- with(data, sqrt(2 + 4*d) - sqrt(1 + 4*e))
+
+# Alternative especially when bins have small counts
+with(data, rootogram(sqrt(2 + 4*d), sqrt(1 + 4*e)))
+with(data, rootogram(sqrt(2 + 4*d), sqrt(1 + 4*e), type = 'deviation'))
+```
+
+>>Tranforming the data does try to improve th fit of the normal curve even thought the tranformation is all the way perfect. I asay this because we still have significant overs and unders now.
+
+
+```{r}
+lo.68 <- g.mean-g.sd
+hi.68 <- g.mean + g.sd
+(lo.68.percent <- exp(c(lo.68, hi.68)))
+
+lo.95 <- g.mean-(2*g.sd)
+hi.95 <- g.mean + (2*g.sd)
+(lo.95.percent <- exp(c(lo.95, hi.95)))
+```
+>>From the tranformed rootogram, the middle 68% of the data ranges from 36.42 up to 75.43. The middle 95% of the data then is ranging between 25.31 and 108.56.
+
+```{r}
+plot(BEPS$age,BEPS$Europe)
+
+plot(BEPS$log.age,BEPS$log.europe)
+```
+
+>>Plotting the age against Eurupe is  gives us a horizontaly linear pattern.Even after reexpression the data points are still only linear. This could be because the values of data points are whole numbers themselves.
+
+```{r}
+(sorted.datas <- BEPS[order(BEPS$log.age, decreasing = T),])
+
+sorted.datas$group <- as.numeric(cut_number(sorted.datas$log.age, 3)) #dividing data into three groups
+length(sorted.datas$log.age)
+# Counts per group
+(n1 <- nrow(sorted.datas[which(sorted.datas$group == 1),]))# which means where
+(n2 <- nrow(sorted.datas[which(sorted.datas$group == 2),]))
+(n3 <- nrow(sorted.datas[which(sorted.datas$group == 3),]))
+
+# Find divisions between groups
+t1 <- first(sorted.datas[which(sorted.datas$group == 1),
+                         'log.age'])
+
+t2 <- first(sorted.datas[which(sorted.datas$group == 2),
+                         'log.age'])
+
+# find (median x, median y) and put to one data frame
+# summary.points <- data.frame(x=c(1.79, 1.87, 2.03),
+#                        y=c(2.08, 2.14, 2.31))
+head( BEPS)
+(summary.points <- as.data.frame(
+  rbind(
+    sapply(sorted.datas[which(sorted.datas$group == 1),
+                        c(12,13)], 2, FUN = median),
+    sapply(sorted.datas[which(sorted.datas$group == 2),
+                        c(12,13)], 2, FUN = median),
+    sapply(sorted.datas[which(sorted.datas$group == 3),
+                        c(12,13)], 2, FUN = median) #2 means column
+  )
+)
+)
+
+(slr.full <- lm(log.age ~ log.europe,
+                data = sorted.datas))
+(slr.resistant <- lm(log.age ~ log.europe,  summary.points))
+#is rlm model from original data, will it be similar to resistant line
+#r.resistant <-rlm(log.2000~log.1985, data = home.prices))
+
+
+
+
+# View plot with 3rds and summary points
+with(sorted.datas, plot(log.age,log.europe,
+                        main="3 Groups, Summary Points\n and Lines of Best Fit"))
+abline(v=t1)
+abline(v=t2)
+points(summary.points, cex=2, pch=19, col="red")
+
+abline(slr.full, col = "blue")
+abline(slr.resistant, col = "red")
+legend("topleft", legend = c("SLR Full", "SLR Resistant"), 
+       col = c("blue", "red"), lwd=2)
+
+
+```
+>>The three summary points that attempts to equally devide the age. However, possibly due to horizontally plotted points.
+
+```{r}
+(myfit <- rline(log.age~log.europe, sorted.datas))
+FIT <- with(myfit, a + b * (sorted.datas$log.age - xC))
+RESIDUAL <- myfit$residual
+options(digits=4) # round everything to 4 digits
+BEPS <- data.frame(X = BEPS$X,vote = BEPS$vote,age =  BEPS$age,
+                            economic.cond.national = BEPS$economic.cond.national,
+                            economic.cond.household = BEPS$economic.cond.household,
+                            Blair = BEPS$Blair,Hague = BEPS$Hague,Kennedy = BEPS$Kennedy,
+                            Europe = BEPS$Europe, political.knowledge = BEPS$political.knowledge,
+                            gender = BEPS$gender, log.age = BEPS$log.age,log.europe = BEPS$log.europe,
+                            FIT, RESIDUAL)
+
+# Residual Analysis
+plot(BEPS$log.age, RESIDUAL,
+     main = 'Resistant SLR Residual vs log.age')
+abline(h=0, col = "red", lwd=2)
+
+# Finding convergence with iterations from 5 to 10
+Results <- data.frame(Iteration=NULL, Slope=NULL, Intercept=NULL)
+for(iterations in 1:10){
+  fit <- rline(log.europe ~ log.age, BEPS, iter=iterations)
+  Results <- rbind(Results,
+                   data.frame(Iteration=iterations,
+                              Slope=fit$b, Intercept=fit$a))
+}
+Results
+
+# Median x value
+(xc <- summary.points[[2,1]])
+
+# Build linear model
+lm(log.europe ~ I(log.age - xc), data = BEPS)
+
+# Create an outlier to see difference
+(BEPS$Europe.a <- BEPS$Europe)
+(BEPS$Europe.a[331])
+(BEPS$Europe.a[331] <- 10) ##?????
+
+r <- rline(Europe.a ~ log.age, BEPS, 10)
+r[c("a", "b", "xC")]
+
+(slr.a <- lm(BEPS$Europe.a ~ I(log.age - r$xC), BEPS))
+(slr.a <- lm(BEPS$Europe.a ~ log.age, BEPS))
+
+with(BEPS, plot(age, Europe.a))
+abline(a = r$a + r$b * -r$xC,
+       b = r$b, col = "red")
+abline(slr.a, col = "blue")
+legend("topleft", legend = c("SLR Full", "SLR Resistant"), 
+       col = c("blue", "red"), lwd=2)
+
+# Resistant v Full Residual Analysis
+plot(BEPS$log.age, r$residual,
+     main = 'Resistant SLR Residual vs log.age')
+abline(h=0, col = "red", lwd=2)
+plot(BEPS$log.age, slr.a$residual,
+     main = 'Full SLR Residual vs log.age')
+abline(h=0, col = "blue", lwd=2)
+
+```
+>>Looking at the Residual plotted against the log, we can see that it tried to represent the clusture of points found amid the plot. Given this graph, the Residual of -8.0 and 4.5 and poorly represented becae they are distant.
